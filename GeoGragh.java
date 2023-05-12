@@ -30,7 +30,8 @@ public class GeoGragh {
     private String name; // 图名
     private final HashMap<List<Double>, GeoVertex> vertexCoord; // 点的坐标对应的点号
     private String proj; //坐标系字符串
-
+    private final HashMap<GeoVertex, ArrayList<GeoVertex>> subVertex;
+    private final HashMap<GeoVertex, GeoVertex> auxVertex;
     private HashMap<Integer, ArrayList<GeoVertex>> roadDict; // 当前图中路的路径点几何
 
     public GeoGragh(String name) {
@@ -41,6 +42,8 @@ public class GeoGragh {
         this.vertexCoord = new HashMap<>();
         this.proj = "";
         this.roadDict = null;
+        this.subVertex = new HashMap<>();
+        this.auxVertex = new HashMap<>();
     }
 
     //通过边文件路径名以及图名构建该图
@@ -256,9 +259,8 @@ public class GeoGragh {
 
     }
 
-    public int disconnectVertex(GeoVertex vertex, ArrayList<GeoVertex> vertices, int newId, HashMap<GeoVertex, ArrayList<GeoVertex>> subVertex, HashMap<GeoVertex, GeoVertex> auxVertex) {
+    public int disconnectVertex(GeoVertex vertex, ArrayList<GeoVertex> vertices, int newId) {
         GeoVertex newVertex = new GeoVertex(newId, vertex.getNodeAttributes(), vertex.getCoord());
-
         id_vertex.put(newId, newVertex);
         if (!auxVertex.containsKey(vertex)) {
             auxVertex.put(newVertex, vertex);
@@ -271,11 +273,6 @@ public class GeoGragh {
             subVertex.get(key).add(newVertex);
         }
         for (GeoVertex v : vertices) {
-            GeoEdge nowEdge = findEdgeVertices(v, vertex);
-            vertices_edge.put(new ArrayList<>() {{
-                add(newVertex);
-                add(v);
-            }}, nowEdge);
             vertex.remove_conVertex(v);
             newVertex.add_conVertex(v);
         }
@@ -295,8 +292,6 @@ public class GeoGragh {
         int newId = id_vertex.size() + 1;
         int judgeId = newId;
         int vertexId = 1;
-        HashMap<GeoVertex, ArrayList<GeoVertex>> subVertex = new HashMap<>();
-        HashMap<GeoVertex, GeoVertex> auxVertex = new HashMap<>();
         while (id_vertex.containsKey(vertexId)) {
             GeoVertex vertex = id_vertex.get(vertexId);
             ArrayList<GeoVertex> conVertices = new ArrayList<>(vertex.getConVertex());
@@ -325,7 +320,7 @@ public class GeoGragh {
                 // 最小的变化角比临界值大，则该点应该作为起始节点
                 else oldConVertices.remove(0);
                 if (!oldConVertices.isEmpty())
-                    newId = this.disconnectVertex(vertex, oldConVertices, newId, subVertex, auxVertex);
+                    newId = this.disconnectVertex(vertex, oldConVertices, newId);
             }
         }
         roadDict = this.roadTrace();
@@ -335,7 +330,6 @@ public class GeoGragh {
         int newId = id_vertex.size() + 1;
         int judgeId = newId;
         int vertexId = 1;
-        HashMap<GeoVertex, ArrayList<GeoVertex>> subVertex = new HashMap<>();
         HashMap<GeoVertex, GeoVertex> auxVertex = new HashMap<>();
         HashMap<GeoVertex, HashMap<ArrayList<GeoVertex>, Double>> angleDict = new HashMap<>();
         if (t <= 1) return;
@@ -348,10 +342,9 @@ public class GeoGragh {
             if (count > 2 || (count == 2 && vertexId > judgeId)) {
                 ArrayList<GeoVertex> oldConVertices = new ArrayList<>(conVertices);
                 oldConVertices.remove(0);
-                newId = disconnectVertex(vertex, oldConVertices, newId, subVertex, auxVertex);
+                newId = disconnectVertex(vertex, oldConVertices, newId);
             }
         }
-        System.out.println(id_edge);
         for (Map.Entry<GeoVertex, ArrayList<GeoVertex>> entry : subVertex.entrySet()) {
             ArrayList<GeoVertex> chosen = new ArrayList<>(entry.getValue());
             chosen.add(entry.getKey());
@@ -373,18 +366,16 @@ public class GeoGragh {
         System.out.println("初始化完成，共耗时：" + (System.currentTimeMillis() - start) + "ms");
         System.out.println("---------------正在进行退火---------------");
         HashMap<GeoVertex, ArrayList<GeoVertex>> resDict = new HashMap<>(); // 最终相邻关系表
-        HashMap<GeoVertex, GeoVertex[]> reflectVertex = new HashMap<>();// 合并的两个节点 key为合并后的节点，value是删除的节点和它的相邻点
         start = System.currentTimeMillis();
         //总损失函数
         double totalCost = 999999999;
-        while (t > 1) {
+        while (t > alpha) {
             System.out.println("当前温度：" + String.format("%.3f", t));
             long mid = System.currentTimeMillis();
             double angleCost = 0.0; //角度损失
             double disCost = 0.0; //孤立损失
             // 相连关系表
             HashMap<GeoVertex, ArrayList<GeoVertex>> conDict = new HashMap<>();
-            HashMap<GeoVertex, GeoVertex[]> tempReflectVertex = new HashMap<>();
             for (GeoVertex v : id_vertex.values()) {
                 conDict.put(v, new ArrayList<>(v.getConVertex()));
             }
@@ -426,7 +417,6 @@ public class GeoGragh {
                                 conDict.get(conVertex2).remove(vertex2);
                                 conDict.get(conVertex2).add(vertex1);
                                 conDict.remove(vertex2);
-                                tempReflectVertex.put(vertex1, new GeoVertex[]{vertex2, conVertex2});
                             }
                             nor.clear();
                             for (Map.Entry<ArrayList<GeoVertex>, Double> temp : entry.getValue().entrySet()) {
@@ -445,7 +435,6 @@ public class GeoGragh {
             if (totalCost > nowCost) {//|| Math.random() < Math.exp((totalCost - nowCost) / t)
                 totalCost = nowCost;
                 resDict = new HashMap<>(conDict);
-                reflectVertex = new HashMap<>(tempReflectVertex);
                 System.out.println("接受当前目标函数值：" + totalCost);
             }
             t *= alpha;
@@ -455,15 +444,11 @@ public class GeoGragh {
         System.out.println("---------------正在重建相邻关系---------------");
         start = System.currentTimeMillis();
         // 根据最终相邻关系表重建相邻关系
-        for (Map.Entry<GeoVertex, GeoVertex[]> entry : reflectVertex.entrySet()) {
-            GeoEdge e = findEdgeVertices(entry.getValue()[0], entry.getValue()[1]);
-            if (e == null) System.out.println("WTFFFFF!");
-            vertices_edge.put(new ArrayList<>() {{
-                add(entry.getKey());
-                add(entry.getValue()[1]);
-            }}, e);
+        ArrayList<GeoVertex> delVertices = new ArrayList<>();
+        for (Map.Entry<Integer, GeoVertex> entry : id_vertex.entrySet()) {
+            if (!resDict.containsKey(entry.getValue())) delVertices.add(entry.getValue());
         }
-        for (GeoVertex[] v : reflectVertex.values()) removeVertex(v[0]);
+        for (GeoVertex v : delVertices) id_vertex.remove(v.getId());
         for (Map.Entry<GeoVertex, ArrayList<GeoVertex>> entry : resDict.entrySet()) {
             ArrayList<GeoVertex> conVertices = new ArrayList<>();
             for (GeoVertex v : entry.getValue()) {
@@ -622,7 +607,10 @@ public class GeoGragh {
             for (GeoVertex v : item.getValue()) {
                 coordinates[i++] = new Coordinate(v.getCoord()[0], v.getCoord()[1]);
                 if (preVertex != null) {
+                    v = auxVertex.getOrDefault(v, v);
+                    preVertex = auxVertex.getOrDefault(preVertex, preVertex);
                     GeoEdge nowEdge = this.findEdgeVertices(preVertex, v);
+                    assert nowEdge != null;
                     HashMap<String, String> edgeAttribute = nowEdge.getEdgeAttribute();
                     for (Map.Entry<String, String> entry : edgeAttribute.entrySet()) {
                         if (att.containsKey(entry.getKey())) att.get(entry.getKey()).add(entry.getValue());
