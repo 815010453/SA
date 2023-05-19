@@ -1,33 +1,14 @@
 package lyd.SA;
 
-import java.io.File;
-import java.io.FileReader;
+
 import java.util.*;
 import java.util.logging.Logger;
 
-import org.checkerframework.checker.units.qual.A;
-import org.geotools.data.DataUtilities;
-import org.geotools.data.FileDataStore;
-import org.geotools.data.FileDataStoreFinder;
-import org.geotools.data.collection.SpatialIndexFeatureCollection;
-import org.geotools.data.simple.SimpleFeatureCollection;
-import org.geotools.data.simple.SimpleFeatureIterator;
-import org.geotools.data.simple.SimpleFeatureSource;
-import org.geotools.map.FeatureLayer;
-import org.geotools.map.Layer;
-import org.geotools.map.MapContent;
-import org.geotools.styling.SLD;
-import org.geotools.styling.Style;
-import org.geotools.swing.JMapFrame;
-import org.geotools.swing.data.JFileDataStoreChooser;
-import org.locationtech.jts.geom.*;
-import org.opengis.feature.Property;
-import org.opengis.feature.simple.SimpleFeature;
 
 /**
  * Prompts the user for a shapefile and displays the contents on the screen in a map frame.
  *
- * <p>This is the GeoTools Quickstart application used in documentationa and tutorials. *
+ * <p>This is the GeoTools Quickstart application used in documentation and tutorials. *
  */
 public class Main {
 
@@ -39,21 +20,23 @@ public class Main {
      */
     public static void main(String[] args) throws Exception {
         //File file = JFileDataStoreChooser.showOpenFile(".shp", null);
-
         String path = "C:\\Users\\81501\\Desktop\\SA\\src\\main\\resources\\data\\cd_road\\cd_road_processed.shp";
+        //String path = "C:\\Users\\81501\\Desktop\\SA\\src\\main\\resources\\data\\cd_part.shp";
         long start = System.currentTimeMillis();
         GeoGragh gragh = new GeoGragh("cd_road", path);
         System.out.println("数据构图完成，共耗时" + (System.currentTimeMillis() - start) + "ms");
+
+/*
         start = System.currentTimeMillis();
-        gragh.reconstructEdgeSA(100, 0.99);
+        gragh.reconstructEdgeSA(3100, 0.99);
         System.out.println("模拟退火算法重构完成，共耗时" + (System.currentTimeMillis() - start) + "ms");
         HashMap<Integer, ArrayList<GeoVertex>> myDict = gragh.getRoadDict();
         System.out.println(""+myDict.entrySet().size());
         start = System.currentTimeMillis();
-        gragh.outputGeographRoads("C:\\Users\\81501\\Desktop\\SA\\src\\main\\resources\\out\\cd_road_minAngle.shp");
+        gragh.outputGeographRoads("C:\\Users\\81501\\Desktop\\SA\\src\\main\\resources\\out\\cd_all_sa.shp");
         System.out.println("数据写入完成，共耗时" + (System.currentTimeMillis() - start) + "ms");
 
-        /*
+
         GeoGragh gragh = new GeoGragh("cd_road");
         ArrayList<GeoVertex> vertices = new ArrayList<>();
 

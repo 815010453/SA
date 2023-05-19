@@ -5,25 +5,16 @@ import java.util.HashMap;
 
 public class GeoVertex {
 
-    private int id; // 唯一标识符 id
-    private double[] coord; // 点坐标[x, y] 单位为m
+    private final int id; // 唯一标识符 id
+    private final double[] coord; // 点坐标[x, y] 单位为m
     private ArrayList<GeoVertex> conVertex; // 相邻点[vertex1, vertex2, ...]
-    private HashMap<String, String> nodeAttributes; // 节点属性{'x':12315,'y':21546,...}
+    private final HashMap<String, String> nodeAttributes; // 节点属性{'x':12315,'y':21546,...}
+
+    private final ArrayList<GeoEdge> edges;
+    private final ArrayList<GeoSegment> segments;
 
     public void setConVertex(ArrayList<GeoVertex> conVertex) {
         this.conVertex = conVertex;
-    }
-
-    public void setId(int id) {
-        this.id = id;
-    }
-
-    public void setCoord(double[] coord) {
-        this.coord = coord;
-    }
-
-    public void setNodeAttributes(HashMap<String, String> nodeAttributes) {
-        this.nodeAttributes = nodeAttributes;
     }
 
     public GeoVertex(int v_id, HashMap<String, String> att, double[] coord) {
@@ -31,6 +22,8 @@ public class GeoVertex {
         this.id = v_id;
         this.coord = coord;
         this.nodeAttributes = att;
+        this.edges = new ArrayList<>();
+        this.segments = new ArrayList<>();
     }
 
     public ArrayList<GeoVertex> getConVertex() {
@@ -43,6 +36,22 @@ public class GeoVertex {
 
     public double[] getCoord() {
         return coord;
+    }
+
+    public void addEdge(GeoEdge edge) {
+        if (!this.edges.contains(edge)) this.edges.add(edge);
+    }
+
+    public void addSegment(GeoSegment segment) {
+        if (!this.segments.contains(segment)) this.segments.add(segment);
+    }
+
+    public ArrayList<GeoSegment> getSegments() {
+        return segments;
+    }
+
+    public ArrayList<GeoEdge> getEdges() {
+        return edges;
     }
 
     public HashMap<String, String> getNodeAttributes() {
