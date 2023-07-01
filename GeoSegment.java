@@ -1,35 +1,35 @@
-<<<<<<< HEAD
 package lyd.SA;
 
 import java.util.ArrayList;
 
 public class GeoSegment {
-    private final GeoVertex start;
-    private final GeoVertex vertex2;
     private final ArrayList<GeoEdge> edges;
+    private final ArrayList<GeoVertex> vertices;
     private final int id;
 
-    public GeoSegment(int id, ArrayList<GeoEdge> edges, GeoVertex start, GeoVertex vertex2) {
+    public GeoSegment(int id, ArrayList<GeoEdge> edges,ArrayList<GeoVertex> vertices) {
         this.edges = edges;
         this.id = id;
-        this.start = start;
-        this.vertex2 = vertex2;
-    }
-
-    public GeoVertex getStart() {
-        return start;
-    }
-
-    public GeoVertex getVertex2() {
-        return vertex2;
+        this.vertices = vertices;
     }
 
     public ArrayList<GeoEdge> getEdges() {
         return edges;
     }
 
+    public ArrayList<GeoVertex> getVertices(){
+        return vertices;
+    }
+
     public int getId() {
         return id;
+    }
+    public int containVertex(GeoVertex vertex){
+        return vertices.indexOf(vertex);
+    }
+
+    public int containEdge(GeoEdge edge){
+        return edges.indexOf(edge);
     }
 
     @Override
@@ -42,48 +42,3 @@ public class GeoSegment {
         return this.id;
     }
 }
-=======
-package lyd.SA;
-
-import java.util.ArrayList;
-
-public class GeoSegment {
-    private final GeoVertex start;
-    private final GeoVertex vertex2;
-    private final ArrayList<GeoEdge> edges;
-    private final int id;
-
-    public GeoSegment(int id, ArrayList<GeoEdge> edges, GeoVertex start, GeoVertex vertex2) {
-        this.edges = edges;
-        this.id = id;
-        this.start = start;
-        this.vertex2 = vertex2;
-    }
-
-    public GeoVertex getStart() {
-        return start;
-    }
-
-    public GeoVertex getVertex2() {
-        return vertex2;
-    }
-
-    public ArrayList<GeoEdge> getEdges() {
-        return edges;
-    }
-
-    public int getId() {
-        return id;
-    }
-
-    @Override
-    public String toString() {
-        return "" + id;
-    }
-
-    @Override
-    public int hashCode() {
-        return this.id;
-    }
-}
->>>>>>> origin/main

@@ -1,5 +1,6 @@
 package lyd.SA;
 
+import org.checkerframework.checker.units.qual.A;
 import org.geotools.data.FeatureWriter;
 import org.geotools.data.FileDataStore;
 import org.geotools.data.FileDataStoreFinder;
@@ -26,15 +27,16 @@ import static org.geotools.data.Transaction.AUTO_COMMIT;
 public class GeoGragh {
     private final HashMap<Integer, GeoVertex> id_vertex;  // 点号对应的节点字典 {id1: vertex1, id2: vertex2, ...}
     private final HashMap<Integer, GeoEdge> id_edge; // 边号对应的边字典 {id1: edge1, id2: edge2}
-    private final HashMap<List<GeoVertex>, GeoEdge> vertices_edge;  // 点号对应的边号字典 {(vertex1, vertex2): edge1, (vertex3, vertex4): edge2,...}
+    private final HashMap<ArrayList<GeoVertex>, GeoEdge> vertices_edge;  // 点号对应的边号字典 {(vertex1, vertex2): edge1, (vertex3, vertex4): edge2,...}
+    private final HashMap<Integer, GeoSegment> id_segment;
     private final String name; // 图名
-    private final HashMap<List<Double>, GeoVertex> vertexCoord; // 点的坐标对应的点号
+    private final HashMap<ArrayList<Double>, GeoVertex> vertexCoord; // 点的坐标对应的点号
     private String proj; //坐标系字符串
     private final HashMap<GeoVertex, ArrayList<GeoVertex>> subVertex; //辅助字典1
     private final HashMap<GeoVertex, GeoVertex> auxVertex; //辅助字典2
-    private HashMap<Integer, ArrayList<GeoVertex>> roadDict; // 当前图中路的路径点几何
+    private final ArrayList<ArrayList<GeoVertex>> roadDict; // 当前图中路的路径点几何
     private final HashSet<GeoSegment> circleRoad; //环路
-    private final ArrayList<GeoVertex> node; //顶点
+    private ArrayList<GeoVertex> node; //顶点
 
     public GeoGragh(String name) {
         this.id_vertex = new HashMap<>();
@@ -43,15 +45,17 @@ public class GeoGragh {
         this.name = name;
         this.vertexCoord = new HashMap<>();
         this.proj = "";
-        this.roadDict = null;
+        this.roadDict = new ArrayList<>();
         this.subVertex = new HashMap<>();
         this.auxVertex = new HashMap<>();
         this.circleRoad = new HashSet<>();
         this.node = new ArrayList<>();
+        this.id_segment = new HashMap<>();
     }
 
     //通过边文件路径名以及图名构建该图
     public GeoGragh(String name, String path) throws Exception {
+        //点与边的id号均从1开始
         this(name);
         File file = new File(path);
         // 坐标系WKT
@@ -146,6 +150,12 @@ public class GeoGragh {
         for (GeoVertex v : id_vertex.values()) {
             if (v.getConVertex().size() > 2) node.add(v);
         }
+        for(GeoVertex v : id_vertex.values()){
+            if (v.getConVertex().size()==0) System.out.println("WTFFFF");
+        }
+        //图中需要删除的环路点
+        ArrayList<GeoVertex> removeVertices = new ArrayList<>();
+        System.out.println(node.size());
         int segId = 1;
         for (GeoVertex v : node) {
             ArrayList<GeoVertex> conVertices = v.getConVertex();
@@ -154,11 +164,13 @@ public class GeoGragh {
             //每一个t可以找出一个segment
             for (GeoVertex t : conVertices) {
                 if (replication.contains(t)) continue;
+                ArrayList<GeoVertex> vertices = new ArrayList<>();
                 GeoVertex pre;
                 GeoVertex next = t;
                 ArrayList<GeoEdge> edges = new ArrayList<>();
                 GeoEdge e = findEdgeVertices(v, t);
                 edges.add(e);
+                vertices.add(v);
                 pre = v;
                 while (next.getConVertex().size() == 2) {
                     int index;
@@ -168,40 +180,37 @@ public class GeoGragh {
                     next = pre.getConVertex().get(index);
                     e = findEdgeVertices(pre, next);
                     edges.add(e);
+                    vertices.add(pre);
                 }
-                GeoSegment seg = new GeoSegment(segId++, edges, v, t);
+                vertices.add(next);
+                GeoSegment seg = new GeoSegment(segId++, edges, vertices);
+                id_segment.put(seg.getId(), seg);
                 if (next == v) {
-                    //报告：找到一条环路
+                    //找到一条环路
                     replication.add(pre);
                     this.circleRoad.add(seg);
-                }
-                v.addSegment(seg);
+                    roadDict.add(vertices);
+                    //在图中构建环路
+                    ArrayList<GeoVertex> rvertices = new ArrayList<>(vertices);
+                    rvertices.remove(v);
+                    rvertices.remove(v);
+                    removeVertices.addAll(rvertices);
+                } else v.addSegment(seg);
             }
         }
-        //在图中删除环路
-        for (GeoSegment s : circleRoad) {
-            ArrayList<GeoEdge> edges = s.getEdges();
-            GeoVertex start1 = edges.get(0).getGeoVertices()[0];
-            GeoVertex start2 = edges.get(0).getGeoVertices()[1];
-            GeoVertex end1 = edges.get(edges.size() - 1).getGeoVertices()[0];
-            GeoVertex end2 = edges.get(edges.size() - 1).getGeoVertices()[1];
-            assert start1 == end1 || start1 == end2 || start2 == end1 || start2 == end2 : "GG";
-            GeoVertex remain;
-            if (start1 == end1 || start1 == end2) {
-                remain = start1;
-            } else {
-                remain = start2;
-            }
-            for (GeoEdge e: edges){
-                GeoVertex v1 = e.getGeoVertices()[0];
-                GeoVertex v2 = e.getGeoVertices()[1];
-                if (v1!=remain) this.removeVertex(v1);
-                if (v2!=remain) this.removeVertex(v2);
-            }
+        for (GeoVertex v : removeVertices) {
+            this.removeVertex(v);
         }
+        //更新node
+        node.clear();
+        for (GeoVertex v : id_vertex.values()) {
+            if (v.getConVertex().size() > 2) node.add(v);
+        }
+        System.out.println(node.size());
+        System.out.println(roadDict);
     }
 
-    public HashMap<Integer, ArrayList<GeoVertex>> getRoadDict() {
+    public ArrayList<ArrayList<GeoVertex>> getRoadDict() {
         return roadDict;
     }
 
@@ -219,28 +228,20 @@ public class GeoGragh {
     }
 
 
-     public void removeVertex(GeoVertex vertex) {
-         int id = vertex.getId();
-         id_vertex.remove(id);
-         ArrayList<GeoVertex> conVertices = new ArrayList<>(vertex.getConVertex());
-         for (GeoVertex v : conVertices) {
-             v.remove_conVertex(vertex);
-             GeoEdge edge = this.findEdgeVertices(vertex, v);
-             vertices_edge.remove(new ArrayList<GeoVertex>() {{
-                 add(vertex);
-                 add(v);
-             }});
-             vertices_edge.remove(new ArrayList<GeoVertex>() {{
-                 add(v);
-                 add(vertex);
-             }});
-             ArrayList<Double> t = new ArrayList<>();
-             t.add(vertex.getCoord()[0]);
-             t.add(vertex.getCoord()[1]);
-             vertexCoord.remove(t);
-             this.id_edge.remove(edge.getId());
-         }
-     }
+    public void removeVertex(GeoVertex vertex) {
+        int id = vertex.getId();
+        id_vertex.remove(id);
+        ArrayList<GeoVertex> conVertices = new ArrayList<>(vertex.getConVertex());
+        for (GeoVertex v : conVertices) {
+            v.remove_conVertex(vertex);
+            GeoEdge edge = this.findEdgeVertices(vertex, v);
+            ArrayList<Double> t = new ArrayList<>();
+            t.add(vertex.getCoord()[0]);
+            t.add(vertex.getCoord()[1]);
+            vertexCoord.remove(t);
+            id_edge.remove(edge.getId());
+        }
+    }
 
     public void addEdge(GeoEdge edge) {
         GeoVertex[] vertices = edge.getGeoVertices();
@@ -253,9 +254,21 @@ public class GeoGragh {
             add(vertices[0]);
             add(vertices[1]);
         }}, edge);
+        this.vertices_edge.put(new ArrayList<>() {{
+            add(vertices[1]);
+            add(vertices[0]);
+        }}, edge);
         vertices[0].add_conVertex(vertices[1]);
         vertices[0].addEdge(edge);
         vertices[1].addEdge(edge);
+    }
+
+    public void removeEdge(GeoEdge edge) {
+        GeoVertex[] vertices = edge.getGeoVertices();
+        this.id_edge.remove(edge.getId());
+        vertices[0].remove_conVertex(vertices[1]);
+        vertices[0].removeEdge(edge);
+        vertices[1].removeEdge(edge);
     }
 
     /*
@@ -362,7 +375,7 @@ public class GeoGragh {
                 if (!oldConVertices.isEmpty()) newId = this.disconnectVertex(vertex, oldConVertices, newId);
             }
         }
-        roadDict = this.roadTrace();
+        this.roadTrace();
     }
 
     public void reconstructEdgeSA(double t, double alpha) {
@@ -496,8 +509,241 @@ public class GeoGragh {
             }
             id_vertex.get(entry.getKey().getId()).setConVertex(conVertices);
         }
-        roadDict = roadTrace();
+        roadTrace();
         System.out.println("重建相邻关系完成，共耗时：" + (System.currentTimeMillis() - start) + "ms");
+    }
+
+    public void joinByMaxAngelOfEdgeAndSegment() {
+        //如果这两条边以及它们对应的路段的夹角最大的话，则一定相连(可选)
+        //需要重新构建node节点
+        long start = System.currentTimeMillis();
+        System.out.println("---------------开始根据边以及路段重建node---------------");
+        //构建哈希表方便查询两个路段（segment）和边（edge）之间的角度值
+        HashMap<GeoVertex, HashMap<ArrayList<GeoEdge>, Double>> angleEdgeVertex = new HashMap<>();
+        HashMap<GeoVertex, HashMap<ArrayList<GeoSegment>, Double>> angleSegmentVertex = new HashMap<>();
+        for (GeoVertex v : node) {
+            HashMap<ArrayList<GeoEdge>, Double> angleEdge = new HashMap<>();
+            HashMap<ArrayList<GeoSegment>, Double> angleSegment = new HashMap<>();
+            ArrayList<GeoSegment> segments1 = new ArrayList<>(v.getSegments());
+            for (GeoSegment calSeg1 : segments1) {
+                ArrayList<GeoVertex> vs1 = calSeg1.getVertices();
+                ArrayList<GeoSegment> segments2 = new ArrayList<>(segments1);
+                segments2.remove(calSeg1);
+                GeoVertex v1 = vs1.get(0);
+                GeoVertex v2 = vs1.get(vs1.size() - 1);
+                assert v1 == v : "wtf1 " + v + " " + v1;
+                assert v1 != v2 : "wtf2 " + v1 + " " + v2;
+                for (GeoSegment calSeg2 : segments2) {
+                    ArrayList<GeoVertex> vs2 = calSeg2.getVertices();
+                    GeoVertex v3 = vs2.get(0);
+                    GeoVertex v4 = vs2.get(vs2.size() - 1);
+                    assert v3 == v : "wtf3 " + v + " " + v3;
+                    assert v3 != v4 : "wtf4 " + v3 + " " + v4 + " " + vs2;
+                    double angle = calculateAngle(v4.getCoord(), v2.getCoord(), v.getCoord());
+                    angleSegment.put(new ArrayList<>() {{
+                        add(calSeg1);
+                        add(calSeg2);
+                    }}, angle);
+                }
+            }
+            ArrayList<GeoEdge> edges1 = new ArrayList<>(v.getEdges());
+            for (GeoEdge e1 : edges1) {
+                GeoVertex v1;
+                ArrayList<GeoEdge> edges2 = new ArrayList<>(edges1);
+                edges2.remove(e1);
+                if (v == e1.getGeoVertices()[0]) {
+                    v1 = e1.getGeoVertices()[1];
+                } else {
+                    v1 = e1.getGeoVertices()[0];
+                    assert v == e1.getGeoVertices()[1] : "wtf5 " + v + " " + Arrays.toString(e1.getGeoVertices());
+                }
+                for (GeoEdge e2 : edges2) {
+                    GeoVertex v2;
+                    if (v == e2.getGeoVertices()[0]) {
+                        v2 = e2.getGeoVertices()[1];
+                    } else {
+                        v2 = e2.getGeoVertices()[0];
+                        assert v == e2.getGeoVertices()[1] : "wtf6 " + v + " " + Arrays.toString(e2.getGeoVertices());
+                    }
+                    double angle = calculateAngle(v1.getCoord(), v2.getCoord(), v.getCoord());
+                    angleEdge.put(new ArrayList<>() {{
+                        add(e1);
+                        add(e2);
+                    }}, angle);
+                }
+
+            }
+            angleEdgeVertex.put(v, angleEdge);
+            angleSegmentVertex.put(v, angleSegment);
+        }
+        int k = 1;
+        boolean flag = true;
+        while (flag) {
+            flag = false;
+            System.out.println("第" + k++ + "次");
+            for (GeoVertex vertex : node) {
+                List<Map.Entry<ArrayList<GeoEdge>, Double>> edgeList = new ArrayList<>(angleEdgeVertex.get(vertex).entrySet());
+                List<Map.Entry<ArrayList<GeoSegment>, Double>> segmentList = new ArrayList<>(angleSegmentVertex.get(vertex).entrySet());
+                //按value由小到大排序
+                edgeList.sort(Map.Entry.comparingByValue());
+                segmentList.sort(Map.Entry.comparingByValue());
+                ArrayList<GeoEdge> targetEdge = edgeList.get(0).getKey();
+                ArrayList<GeoSegment> targetSegment = segmentList.get(0).getKey();
+                boolean judge = (targetSegment.get(0).getEdges().contains(targetEdge.get(0)) && targetSegment.get(1).getEdges().contains(targetEdge.get(1))) ||
+                        (targetSegment.get(0).getEdges().contains(targetEdge.get(1)) && targetSegment.get(1).getEdges().contains(targetEdge.get(0)));
+                if (judge) {
+                    flag = true;
+                    //这两条边以及它们对应的路段的夹角最大,将他们相连
+                    GeoVertex conVertex1 = targetEdge.get(0).getGeoVertices()[0] == vertex ? targetEdge.get(0).getGeoVertices()[1] : targetEdge.get(0).getGeoVertices()[0];
+                    GeoVertex conVertex2 = targetEdge.get(1).getGeoVertices()[0] == vertex ? targetEdge.get(1).getGeoVertices()[1] : targetEdge.get(1).getGeoVertices()[0];
+                    assert targetEdge.get(0).getGeoVertices()[0] == vertex || targetEdge.get(0).getGeoVertices()[1] == vertex : "wtf1";
+                    assert targetEdge.get(1).getGeoVertices()[0] == vertex || targetEdge.get(1).getGeoVertices()[1] == vertex : "wtf2";
+                    GeoSegment segment1 = targetSegment.get(0);
+                    GeoSegment segment2 = targetSegment.get(1);
+                    GeoVertex newVertex = new GeoVertex(id_vertex.size() + 1, new HashMap<>(), vertex.getCoord());
+                    //修改边对应的点
+                    GeoEdge edge1 = targetEdge.get(0);
+                    GeoEdge edge2 = targetEdge.get(1);
+                    //删除旧边，添加新边
+                    this.removeEdge(edge1);
+                    this.removeEdge(edge2);
+                    edge1.setGeoVertices(new GeoVertex[]{newVertex, conVertex1});
+                    edge2.setGeoVertices(new GeoVertex[]{newVertex, conVertex2});
+                    this.addEdge(edge1);
+                    this.addEdge(edge2);
+
+                    ArrayList<GeoEdge> newEdges1 = new ArrayList<>();
+                    ArrayList<GeoEdge> newEdges2 = new ArrayList<>();
+                    ArrayList<GeoVertex> newVertices1 = new ArrayList<>();
+                    ArrayList<GeoVertex> newVertices2 = new ArrayList<>();
+
+                    GeoVertex vertex1 = segment1.getVertices().get(segment1.getVertices().size() - 1);
+                    GeoVertex vertex2 = segment2.getVertices().get(segment2.getVertices().size() - 1);
+
+                    assert segment1.getVertices().get(0) == segment2.getVertices().get(0) : "wfffffff";
+                    for (int i = segment1.getEdges().size() - 1; i >= 0; i--) {
+                        newEdges1.add(segment1.getEdges().get(i));
+                    }
+                    newEdges1.addAll(segment2.getEdges());
+                    for (int i = segment2.getEdges().size() - 1; i >= 0; i--) {
+                        newEdges2.add(segment2.getEdges().get(i));
+                    }
+                    newEdges2.addAll(segment1.getEdges());
+
+                    for (int i = segment1.getVertices().size() - 1; i >= 0; i--) {
+                        newVertices1.add(segment1.getVertices().get(i));
+                    }
+                    newVertices1.remove(vertex);
+                    newVertices1.addAll(segment2.getVertices());
+                    for (int i = segment2.getVertices().size() - 1; i >= 0; i--) {
+                        newVertices2.add(segment2.getVertices().get(i));
+                    }
+                    newVertices2.remove(vertex);
+                    newVertices2.addAll(segment1.getVertices());
+                    GeoSegment newSegment1 = new GeoSegment(id_segment.size() + 1, newEdges1, newVertices1);
+                    id_segment.put(newSegment1.getId(), newSegment1);
+                    GeoSegment newSegment2 = new GeoSegment(id_segment.size() + 1, newEdges2, newVertices2);
+                    id_segment.put(newSegment2.getId(), newSegment2);
+                    vertex.removeSegment(segment1);
+                    vertex.removeSegment(segment2);
+                    //更新segment角度表以及edge角度表
+                    ArrayList<ArrayList<GeoSegment>> tarSeg = new ArrayList<>(angleSegmentVertex.get(vertex).keySet());
+                    ArrayList<ArrayList<GeoSegment>> rmSeg = new ArrayList<>();
+                    for (ArrayList<GeoSegment> key : tarSeg) {
+                        if (key.contains(segment1) || key.contains(segment2)) rmSeg.add(key);
+                    }
+                    for (ArrayList<GeoSegment> key : rmSeg) {
+                        angleSegmentVertex.get(vertex).remove(key);
+                    }
+
+                    ArrayList<ArrayList<GeoEdge>> tarEdge = new ArrayList<>(angleEdgeVertex.get(vertex).keySet());
+                    ArrayList<ArrayList<GeoEdge>> rmEdge = new ArrayList<>();
+                    for (ArrayList<GeoEdge> key : tarEdge) {
+                        if (key.contains(edge1) || key.contains(edge2)) rmEdge.add(key);
+                    }
+                    for (ArrayList<GeoEdge> key : rmEdge) {
+                        angleEdgeVertex.get(vertex).remove(key);
+                    }
+
+                    if (newSegment1.getVertices().get(0) == newSegment1.getVertices().get(newSegment1.getVertices().size() - 1)) {
+                        // 出现了环路
+                        ArrayList<GeoVertex> removeVertices1 = new ArrayList<>(newSegment1.getVertices());
+                        circleRoad.add(newSegment1);
+                        roadDict.add(newSegment1.getVertices());
+                        removeVertices1.remove(removeVertices1.size() - 1);
+                        removeVertices1.remove(0);
+                        for (GeoVertex rrv : removeVertices1) this.removeVertex(rrv);
+                    } else {
+                        if (vertex1.getConVertex().size() > 2) {
+                            ArrayList<ArrayList<GeoSegment>> tarSeg1 = new ArrayList<>(angleSegmentVertex.get(vertex1).keySet());
+                            ArrayList<ArrayList<GeoSegment>> rmSeg1 = new ArrayList<>();
+                            for (ArrayList<GeoSegment> key : tarSeg1) {
+                                if (key.contains(segment1)) rmSeg1.add(key);
+                            }
+                            for (ArrayList<GeoSegment> key : rmSeg1) {
+                                angleSegmentVertex.get(vertex).remove(key);
+                            }
+                            vertex1.removeSegment(segment1);
+                            vertex1.addSegment(newSegment1);
+                            for (GeoSegment key : vertex1.getSegments()) {
+                                GeoVertex tarS = key.getVertices().get(key.getVertices().size() - 1);
+                                double angle = calculateAngle(tarS.getCoord(), vertex2.getCoord(), vertex1.getCoord());
+                                angleSegmentVertex.get(vertex1).put(new ArrayList<>() {{
+                                    add(key);
+                                    add(newSegment1);
+                                }}, angle);
+                            }
+                        }
+                    }
+                    if (newSegment2.getVertices().get(0) == newSegment2.getVertices().get(newSegment2.getVertices().size() - 1)) {
+                        // 出现了环路
+                        ArrayList<GeoVertex> removeVertices2 = new ArrayList<>(newSegment2.getVertices());
+                        circleRoad.add(newSegment2);
+                        roadDict.add(newSegment2.getVertices());
+                        removeVertices2.remove(removeVertices2.size() - 1);
+                        removeVertices2.remove(0);
+                        for (GeoVertex rrv : removeVertices2) this.removeVertex(rrv);
+                    } else {
+                        if (vertex2.getConVertex().size() > 2) {
+                            ArrayList<ArrayList<GeoSegment>> tarSeg2 = new ArrayList<>(angleSegmentVertex.get(vertex2).keySet());
+                            ArrayList<ArrayList<GeoSegment>> rmSeg2 = new ArrayList<>();
+                            for (ArrayList<GeoSegment> key : tarSeg2) {
+                                if (key.contains(segment2)) rmSeg2.add(key);
+                            }
+                            for (ArrayList<GeoSegment> key : rmSeg2) {
+                                angleSegmentVertex.get(vertex).remove(key);
+                            }
+                            vertex2.removeSegment(segment2);
+                            vertex2.addSegment(newSegment2);
+                            for (GeoSegment key : vertex2.getSegments()) {
+                                GeoVertex tarS = key.getVertices().get(key.getVertices().size() - 1);
+                                double angle = calculateAngle(tarS.getCoord(), vertex1.getCoord(), vertex2.getCoord());
+                                angleSegmentVertex.get(vertex2).put(new ArrayList<>() {{
+                                    add(key);
+                                    add(newSegment2);
+                                }}, angle);
+                            }
+                        }
+                    }
+                }
+            }
+            //重新构建路段(两个node之间的边的集合) node的度大于2
+            node.clear();
+            for (GeoVertex vv : id_vertex.values()) {
+                if (vv.getConVertex().size() > 2) node.add(vv);
+            }
+            System.out.println(node.size());
+        }
+        ArrayList<GeoVertex> rmVertices = new ArrayList<>();
+        for(GeoVertex v: id_vertex.values()){
+            if(v.getConVertex().size()==0) rmVertices.add(v);
+        }
+        for(GeoVertex v: rmVertices){
+            this.removeVertex(v);
+        }
+        System.out.println("---------------重建node完成---------------");
+        System.out.println("重建node完成，共耗时：" + (System.currentTimeMillis() - start) + "ms");
+
     }
 
     public void strokeBuildingSA(double t, double alpha) {
@@ -506,23 +752,173 @@ public class GeoGragh {
         t（double）：模拟退火算法的初始温度。
         alpha（double）：模拟退火算法的温度衰减率。
         Returns:
-        构建图中的道路字典。key是道路的ID，值是节点集合。*/
-        //构建哈希表方便查询两个节点或者顶点之间的角度值
-        HashMap<GeoVertex, Double> angleVertex = new HashMap<>();
-        HashMap<GeoSegment, Double> angleSegment = new HashMap<>();
+        构建图中的道路二维数组。每个数组是节点集合。*/
+        //如果这两条边以及它们对应的路段的夹角最大的话，则相连，重建node
+        long start = System.currentTimeMillis();
+        System.out.println("---------------正在进行初始化---------------");
+        joinByMaxAngelOfEdgeAndSegment();
+        //----TODO----
+        int newId = Collections.max(id_vertex.keySet()) + 1;
+        if (t <= 0.01) return;
+        //构建哈希表方便查询两个路段（segment）和边（edge）之间的角度值
+        HashMap<GeoVertex, HashMap<ArrayList<GeoEdge>, Double>> angleEdgeVertex = new HashMap<>();
+        HashMap<GeoVertex, HashMap<ArrayList<GeoSegment>, Double>> angleSegmentVertex = new HashMap<>();
         for (GeoVertex v : node) {
-            ArrayList<GeoSegment> segments = v.getSegments();
-            for (GeoSegment s : segments) {
-                if (circleRoad.contains(s)) continue; //这是环路，本质是已经构建好的线路，跳过
-
+            HashMap<ArrayList<GeoEdge>, Double> angleEdge = new HashMap<>();
+            HashMap<ArrayList<GeoSegment>, Double> angleSegment = new HashMap<>();
+            ArrayList<GeoSegment> segments1 = new ArrayList<>(v.getSegments());
+            for (GeoSegment calSeg1 : segments1) {
+                ArrayList<GeoVertex> vs1 = calSeg1.getVertices();
+                ArrayList<GeoSegment> segments2 = new ArrayList<>(segments1);
+                segments2.remove(calSeg1);
+                GeoVertex v1 = vs1.get(0);
+                GeoVertex v2 = vs1.get(vs1.size() - 1);
+                assert v1 == v : "wtf1 " + v + " " + v1;
+                assert v1 != v2 : "wtf2 " + v1 + " " + v2;
+                for (GeoSegment calSeg2 : segments2) {
+                    ArrayList<GeoVertex> vs2 = calSeg2.getVertices();
+                    GeoVertex v3 = vs2.get(0);
+                    GeoVertex v4 = vs2.get(vs2.size() - 1);
+                    assert v3 == v : "wtf3 " + v + " " + v3;
+                    assert v3 != v4 : "wtf4 " + v3 + " " + v4 + " " + vs2;
+                    double angle = calculateAngle(v4.getCoord(), v2.getCoord(), v.getCoord());
+                    angleSegment.put(new ArrayList<>() {{
+                        add(calSeg1);
+                        add(calSeg2);
+                    }}, angle);
+                }
+            }
+            ArrayList<GeoEdge> edges1 = new ArrayList<>(v.getEdges());
+            for (GeoEdge e1 : edges1) {
+                GeoVertex v1;
+                ArrayList<GeoEdge> edges2 = new ArrayList<>(edges1);
+                edges2.remove(e1);
+                if (v == e1.getGeoVertices()[0]) {
+                    v1 = e1.getGeoVertices()[1];
+                } else {
+                    v1 = e1.getGeoVertices()[0];
+                    assert v == e1.getGeoVertices()[1] : "wtf5 " + v + " " + Arrays.toString(e1.getGeoVertices());
+                }
+                for (GeoEdge e2 : edges2) {
+                    GeoVertex v2;
+                    if (v == e2.getGeoVertices()[0]) {
+                        v2 = e2.getGeoVertices()[1];
+                    } else {
+                        v2 = e2.getGeoVertices()[0];
+                        assert v == e2.getGeoVertices()[1] : "wtf6 " + v + " " + Arrays.toString(e2.getGeoVertices());
+                    }
+                    double angle = calculateAngle(v1.getCoord(), v2.getCoord(), v.getCoord());
+                    angleEdge.put(new ArrayList<>() {{
+                        add(e1);
+                        add(e2);
+                    }}, angle);
+                }
 
             }
+            angleEdgeVertex.put(v, angleEdge);
+            angleSegmentVertex.put(v, angleSegment);
         }
+        System.out.println("---------------初始化完成---------------");
+        System.out.println("初始化完成，共耗时：" + (System.currentTimeMillis() - start) + "ms");
+        System.out.println("---------------正在进行退火---------------");
+        HashMap<GeoVertex, ArrayList<GeoVertex>> resDict = new HashMap<>(); // 最终相邻关系表
+        start = System.currentTimeMillis();
+        long mid = start;
+        //总损失函数
+        double totalCost = Double.MAX_VALUE;
+        /*while (t > 0.001) {
+            //long mid = System.currentTimeMillis();
+            System.out.println("当前温度：" + String.format("%.4f", t));
+            double angleCost = 0; //角度损失
+            //double disCost = 0.0; //孤立损失
+            // 相连关系表
+            HashMap<GeoVertex, ArrayList<GeoVertex>> conDict = new HashMap<>();
+            for (GeoVertex v : id_vertex.values()) {
+                conDict.put(v, new ArrayList<>(v.getConVertex()));
+            }
+            for (Map.Entry<GeoVertex, HashMap<ArrayList<GeoVertex>, Double>> entry : angleDict.entrySet()) {
+                //当前节点上已经选择相连的节点集合
+                HashSet<GeoVertex> chosenVertex = new HashSet<>();
+                // 决定不相连的节点组合
+                HashSet<ArrayList<GeoVertex>> disconnectVertex = new HashSet<>();
+                //nor = {[v1,v2] = 0.2} 表示如果v1和v2合并的话角度收益为0.2
+                HashMap<ArrayList<GeoVertex>, Double> nor = new HashMap<>(entry.getValue());
+                while (!nor.isEmpty()) {
+                    nor = normalize(nor);
+                    double chosenNum = Math.random();
+                    double nowNum = 0.0;
+                    for (Map.Entry<ArrayList<GeoVertex>, Double> val : nor.entrySet()) {
+                        nowNum += val.getValue();
+                        if (chosenNum <= nowNum) {
+                            //选中!
+                            //判断是否要合并
+                            double chosenNum2 = Math.random();
+                            double nowAngle = entry.getValue().get(val.getKey());
+                            if (chosenNum2 - 0.5 > Math.log(nowAngle + 1) || nowAngle <= 0.8) {
+                                //这两点不合并，也就是它们的相邻点所组成的边不相连
+                                disconnectVertex.add(val.getKey());
+                                //计算孤立损失
+                                //disCost = disCost + nowAngle * 2;
+                            } else {
+                                //要合并
+                                GeoVertex vertex1 = val.getKey().get(0);
+                                GeoVertex vertex2 = val.getKey().get(1);
+                                chosenVertex.add(vertex1);
+                                chosenVertex.add(vertex2);
+                                //计算角度损失
+                                angleCost = angleCost + nowAngle;
+                                //合并两个节点，相当于是在删除vertex2，但要保留vertex2的相邻关系
+                                GeoVertex conVertex2 = conDict.get(vertex2).get(0);
+                                conDict.get(vertex1).add(conVertex2);
+                                conDict.get(conVertex2).remove(vertex2);
+                                conDict.get(conVertex2).add(vertex1);
+                                conDict.remove(vertex2);
+                            }
+                            nor.clear();
+                            for (Map.Entry<ArrayList<GeoVertex>, Double> temp : entry.getValue().entrySet()) {
+                                if (!chosenVertex.contains(temp.getKey().get(0)) && !chosenVertex.contains(temp.getKey().get(1)) && !disconnectVertex.contains(temp.getKey())) {
+                                    nor.put(temp.getKey(), temp.getValue());
+                                }
+                            }
+                            break;
+                        }
+                    }
+                }
+            }
+            //计算路径损失
+            double roadCost = calRoadCost(conDict); //路径损失
+            double nowCost = (Math.pow(roadCost, 2.0) + angleCost); //+ disCost
+            if (totalCost > nowCost) { // || Math.random() < Math.exp((nowCost - totalCost) / t)
+                totalCost = nowCost;
+                resDict = new HashMap<>(conDict);
+                System.out.println("接受当前目标函数值：" + totalCost);
+                System.out.println("" + (System.currentTimeMillis() - mid) + "ms");
+                mid = System.currentTimeMillis();
+            }
+            t *= alpha;
+        }
+        System.out.println("退火完成，共耗时：" + (System.currentTimeMillis() - start) + "ms");
+        System.out.println("---------------正在重建相邻关系---------------");
+        start = System.currentTimeMillis();
+        // 根据最终相邻关系表重建相邻关系
+        ArrayList<GeoVertex> delVertices = new ArrayList<>();
+        for (Map.Entry<Integer, GeoVertex> entry : id_vertex.entrySet()) {
+            if (!resDict.containsKey(entry.getValue())) delVertices.add(entry.getValue());
+        }
+        for (GeoVertex v : delVertices) id_vertex.remove(v.getId());
+        for (Map.Entry<GeoVertex, ArrayList<GeoVertex>> entry : resDict.entrySet()) {
+            ArrayList<GeoVertex> conVertices = new ArrayList<>();
+            for (GeoVertex v : entry.getValue()) {
+                conVertices.add(id_vertex.get(v.getId()));
+            }
+            id_vertex.get(entry.getKey().getId()).setConVertex(conVertices);
+        }
+        roadTrace();
+        System.out.println("重建相邻关系完成，共耗时：" + (System.currentTimeMillis() - start) + "ms");*/
     }
 
-    public HashMap<Integer, ArrayList<GeoVertex>> roadTrace() {
-        HashMap<Integer, ArrayList<GeoVertex>> roadDict = new HashMap<>();
-        int road_count = 1;
+    public void roadTrace() {
+        int road_count = roadDict.size();
         ArrayList<GeoVertex> nodeVertex = new ArrayList<>();
         HashMap<GeoVertex, Boolean> visitedVertex = new HashMap<>();
         for (GeoVertex vertex : this.id_vertex.values()) {
@@ -537,7 +933,7 @@ public class GeoGragh {
         for (GeoVertex vertex : nodeVertex) {
             if (!visitedVertex.get(vertex)) {
                 visitedVertex.put(vertex, true);
-                roadDict.put(road_count, new ArrayList<>());
+                roadDict.add(new ArrayList<>());
                 GeoVertex nowVertex = vertex;
                 GeoVertex nextVertex = vertex.getConVertex().get(0);
                 roadDict.get(road_count).add(nowVertex);
@@ -559,7 +955,7 @@ public class GeoGragh {
         for (GeoVertex vertex : this.id_vertex.values()) {
             if (visitedVertex.get(vertex)) continue;
             visitedVertex.put(vertex, true);
-            roadDict.put(road_count, new ArrayList<>());
+            roadDict.add(new ArrayList<>());
             GeoVertex nextVertex = vertex.getConVertex().get(0);
             roadDict.get(road_count).add(vertex);
             GeoVertex nowVertex = vertex;
@@ -575,7 +971,6 @@ public class GeoGragh {
             roadDict.get(road_count).add(nextVertex);
             road_count += 1;
         }
-        return roadDict;
     }
 
     public double calRoadCost(HashMap<GeoVertex, ArrayList<GeoVertex>> conDict) {
@@ -657,22 +1052,22 @@ public class GeoGragh {
         //写入shapefile
         FeatureWriter<SimpleFeatureType, SimpleFeature> writer = ds.getFeatureWriter(ds.getTypeNames()[0], AUTO_COMMIT);
         int nowId = 1;
-        for (Map.Entry<Integer, ArrayList<GeoVertex>> item : roadDict.entrySet()) {
+        for (ArrayList<GeoVertex> item : roadDict) {
             //获取当前写对象
             SimpleFeature feature = writer.next();
             //几何坐标，LineString是通过Coordinate[]构建的，同理MultiLineString是通过LineString[]构建
-            Coordinate[] coordinates = new Coordinate[item.getValue().size()];
+            Coordinate[] coordinates = new Coordinate[item.size()];
             //获取线段的属性集合，方便后面求众数、平均数等。
             HashMap<String, ArrayList<String>> att = new HashMap<>();
             int i = 0;
             GeoVertex preVertex = null;
-            for (GeoVertex v : item.getValue()) {
+            for (GeoVertex v : item) {
                 coordinates[i++] = new Coordinate(v.getCoord()[0], v.getCoord()[1]);
                 if (preVertex != null) {
                     v = auxVertex.getOrDefault(v, v);
                     preVertex = auxVertex.getOrDefault(preVertex, preVertex);
                     GeoEdge nowEdge = this.findEdgeVertices(preVertex, v);
-                    assert nowEdge != null;
+                    assert nowEdge != null: " " + preVertex + " " + v;
                     HashMap<String, String> edgeAttribute = nowEdge.getEdgeAttribute();
                     for (Map.Entry<String, String> entry : edgeAttribute.entrySet()) {
                         if (att.containsKey(entry.getKey())) att.get(entry.getKey()).add(entry.getValue());
@@ -760,7 +1155,7 @@ public class GeoGragh {
         double cos_theta = dot_product / (a_norm * b_norm);
         cos_theta = Double.parseDouble(String.format("%.8f", cos_theta));
         double theta = Math.acos(cos_theta);
-        if (theta > Math.PI) theta = 2 * Math.PI - theta;
+        //if (theta > Math.PI) theta = 2 * Math.PI - theta;
 
         return Math.PI - theta;
     }

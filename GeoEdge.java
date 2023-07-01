@@ -4,7 +4,7 @@ import java.util.HashMap;
 
 public class GeoEdge {
     private final int id; // 唯一标识符 id
-    private final GeoVertex[] geoVertices; // 组成该边的点
+    private GeoVertex[] geoVertices; // 组成该边的点
     private HashMap<String, String> edgeAttribute; // 该边的属性 {'fclass': 'highway', 'name': '公路', ...}
 
     public GeoEdge(int id, GeoVertex vertex_a, GeoVertex vertex_b, HashMap<String, String> att) {
@@ -25,7 +25,9 @@ public class GeoEdge {
     public HashMap<String, String> getEdgeAttribute() {
         return edgeAttribute;
     }
-
+    public void setGeoVertices(GeoVertex[] geoVertices) {
+        this.geoVertices = geoVertices;
+    }
 
     public void setEdgeAttribute(HashMap<String, String> edgeAttribute) {
         this.edgeAttribute = edgeAttribute;

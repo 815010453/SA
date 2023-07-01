@@ -2,6 +2,7 @@ package lyd.SA;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 
 public class GeoVertex {
 
@@ -39,11 +40,17 @@ public class GeoVertex {
     }
 
     public void addEdge(GeoEdge edge) {
-        if (!this.edges.contains(edge)) this.edges.add(edge);
+        if(!this.edges.contains(edge)){
+            this.edges.add(edge);
+        }
+    }
+
+    public void removeEdge(GeoEdge edge) {
+        this.edges.remove(edge);
     }
 
     public void addSegment(GeoSegment segment) {
-        if (!this.segments.contains(segment)) this.segments.add(segment);
+        if(!this.segments.contains(segment)) this.segments.add(segment);
     }
 
     public ArrayList<GeoSegment> getSegments() {
@@ -52,6 +59,10 @@ public class GeoVertex {
 
     public ArrayList<GeoEdge> getEdges() {
         return edges;
+    }
+
+    public void removeSegment(GeoSegment seg) {
+        segments.remove(seg);
     }
 
     public HashMap<String, String> getNodeAttributes() {
@@ -79,7 +90,9 @@ public class GeoVertex {
         GeoVertex geoVertex = (GeoVertex) o;
         return id == geoVertex.id;
     }
-
+    public void clearSegment(){
+        this.segments.clear();
+    }
     @Override
     public int hashCode() {
         return this.id;
